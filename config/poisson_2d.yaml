@@ -1,0 +1,60 @@
+# 泊松方程2D问题配置
+# 继承自base_config.yaml
+
+# 问题特定参数
+pde:
+  type: "poisson"
+  dimension: 2
+  radius: 1.0
+  
+# 源项参数
+source_term:
+  type: "constant"
+  value: 4.0
+
+# 边界条件
+boundary:
+  type: "dirichlet"
+  value: "exact_solution"
+
+# 域参数
+domain:
+  type: "disk"
+  radius: 1.0
+
+# 核函数参数
+kernel:
+  type: "gaussian"
+  nodes_count: 21     # 每个维度的节点数
+  scale: 0.5          # 核尺度参数
+
+# 网络参数覆盖
+network:
+  input_dim: 2
+  output_dim: 1
+  hidden_width: 100
+  hidden_depth: 3
+
+# 训练参数覆盖
+training:
+  max_steps: 20000
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  penalty_coefficient: 1000
+  
+# 采样参数
+sampling:
+  interior_batch_size: 4096
+  boundary_batch_size: 4096
+  quadrature_points: 40000
+  
+# 收敛参数
+convergence:
+  window_size: 200
+  tolerance: 5e-3
+  
+# 输出参数
+output:
+  write_interval: 10
+  resample_interval: 200
+  visualization_samples: 100

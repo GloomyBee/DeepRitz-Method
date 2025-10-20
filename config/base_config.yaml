@@ -1,0 +1,40 @@
+# RKDR方法基础配置
+# 基础参数
+window_size: 200        # 损失窗口大小
+tolerance: 5e-2         # 收敛容忍度
+k: 1                    # 图片后缀
+d: 2                    # 输入维度
+dd: 1                   # 输出维度
+radius: 1.0            # 域半径
+
+# 批处理参数
+bodyBatch: 4096        # 域内批大小
+bdryBatch: 4096        # 边界批大小
+numQuad: 40000         # 积分点数量
+
+# 网络参数
+width: 100             # 网络宽度
+depth: 3               # 网络深度
+
+# 训练参数
+trainStep: 20000       # 训练步数
+lr: 0.001             # 学习率
+preLr: 0.01           # 预训练学习率
+decay: 0.0001         # 权重衰减
+penalty: 1000         # 边界惩罚系数
+step_size: 200        # 学习率调度步数
+gamma: 0.5            # 学习率衰减因子
+
+# 采样参数
+writeStep: 10         # 写入步数
+sampleStep: 200       # 重新采样步数
+preStep: 0            # 预训练步数
+diff: 0.01            # 差分参数
+nSample: 100          # 可视化采样数
+
+# 设备参数
+device: "cpu"        # 设备选择 (auto, cpu, cuda)
+
+# 输出参数
+output_dir: "output"  # 输出目录
+figures_dir: "figures" # 图表目录
