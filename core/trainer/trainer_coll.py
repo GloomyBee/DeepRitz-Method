@@ -1,45 +1,49 @@
 """
-deep ritz核心训练逻辑
+deep ritz核心训练逻辑 - 配点法训练器
 """
 import torch
-from torch.optim.lr_scheduler import StepLR
 import os
 import math
 from typing import List, Tuple
+from .base_trainer import BaseTrainer
 from ..data_utils.sampler import Utils
-# 确保导入了正确的损失函数
 from ..loss.losses_coll import compute_energy_loss_quadrature, compute_boundary_loss_quadrature, compute_total_loss_quadrature
 
 
-class CollocationTrainer:
+class CollocationTrainer(BaseTrainer):
     """配点法训练器类"""
 
     def __init__(self, model, device: str, params: dict):
-        self.model = model
-        self.device = device
-        self.params = params
-        self.optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"], weight_decay=params["decay"])
-        self.scheduler = StepLR(self.optimizer, step_size=params["step_size"], gamma=params["gamma"])
-        self.data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
-        os.makedirs(self.data_dir, exist_ok=True)
+        """
+        初始化配点法训练器
 
+        Args:
+            model: 神经网络模型（包含pde属性）
+            device: 计算设备
+            params: 配置参数
+        """
+        super().__init__(model, device, params)
+        # 准备训练数据
+        self._prepare_training_data()
 
-        # 我们在这里预先生成固定的配点，供 train_coll 在整个训练过程中使用。
+    def _prepare_training_data(self) -> None:
+        """准备配点法训练数据"""
+        # 预先生成固定的配点，供整个训练过程使用
 
-        # 从参数中获取每个轴的点数。'bodyQuadBatch' 应该是一个能开方的数，如 2500 (50*50), 10000 (100*100)，我们使用 .get() 来提供一个默认值，以防参数文件中没有定义。
+        # 从参数中获取每个轴的点数
         num_points_per_axis = int(math.sqrt(self.params.get("bodyQuadBatch", 2500)))
 
         # 1. 生成内部配点和权重
         points_body_np, weights_body_np = Utils.generate_quadrature_grid(
             self.params["radius"], num_points_per_axis
         )
-        # 将它们转换为张量并移动到指定设备 (GPU/CPU)
+        # 转换为张量并移动到设备
         self.data_body = torch.from_numpy(points_body_np).float().to(self.device)
-        self.weights_body = torch.from_numpy(weights_body_np).float().to(self.device).view(-1, 1) # 调整形状以便广播
-        # 设置 requires_grad=True 以便计算关于输入的梯度
+        self.weights_body = torch.from_numpy(weights_body_np).float().to(self.device).view(-1, 1)
+        # 设置 requires_grad=True 以便计算梯度
         self.data_body.requires_grad = True
 
-        # 2. 生成边界点 (边界点仍可随机采样, 或者也可以固定)
+        # 2. 生成边界点（可随机采样）
         self.data_boundary = torch.from_numpy(Utils.sample_from_surface(
             self.params["radius"], self.params["bdryBatch"]
         )).float().to(self.device)
@@ -91,139 +95,93 @@ class CollocationTrainer:
 
         return l2_error, h1_error
 
+    def _compute_loss(self, data_body, data_boundary, weights_body=None) -> torch.Tensor:
+        """
+        计算配点法损失
+
+        Args:
+            data_body: 内部配点数据
+            data_boundary: 边界点数据
+            weights_body: 配点权重（可选）
+
+        Returns:
+            总损失
+        """
+        # 使用传入的权重或默认权重
+        if weights_body is None:
+            weights_body = self.weights_body
+
+        output_body = self.model(data_body)
+        grad_output = torch.autograd.grad(
+            output_body.sum(), data_body,
+            retain_graph=True, create_graph=True
+        )[0]
+
+        source_term = self.model.pde.source_term(data_body).to(self.device)
+
+        # 配点法能量损失
+        energy_loss = compute_energy_loss_quadrature(output_body, grad_output, source_term, weights_body)
+
+        # 边界损失
+        target_boundary = self.model.pde.boundary_condition(data_boundary)
+        output_boundary = self.model(data_boundary)
+        boundary_loss = compute_boundary_loss_quadrature(output_boundary, target_boundary, self.params["penalty"], self.params["radius"])
+
+        # 总损失
+        return compute_total_loss_quadrature(energy_loss, boundary_loss)
+
     def train(self) -> Tuple[List[int], List[float], List[float]]:
         """
-        训练模型 - 原始的蒙特卡洛随机采样版本 (保持不变)
-        """
-        # ... 这里的代码保持和你原来的一样 ...
-        self.model.train()
-        data_body = torch.from_numpy(Utils.sample_from_disk(self.params["radius"], self.params["bodyBatch"])).float().to(self.device)
-        data_body.requires_grad = True
-        data_boundary = torch.from_numpy(Utils.sample_from_surface(self.params["radius"], self.params["bdryBatch"])).float().to(self.device)
+        训练模型 - 配点法（使用固定配点进行数值积分）
 
+        Returns:
+            (List[int], List[float], List[float]): (训练步数列表, L2误差列表, H1误差列表)
+        """
+        self.model.train()
         steps, l2_errors, h1_errors = [], [], []
         loss_window = []
-        window_size = self.params.get("window_size", 100)
-        tolerance = self.params.get("tolerance", 1e-5)
 
-        with open(os.path.join(self.data_dir, "rkdr_mc_loss_history.txt"), "w") as f:
+        loss_history_file = "rkdr_coll_loss_history.txt"
+        error_history_file = "rkdr_coll_error_history.txt"
+        loss_path = os.path.join(self.data_dir, loss_history_file)
+
+        with open(loss_path, "w") as f:
             f.write("Step Loss\n")
             for step in range(self.params["trainStep"]):
-                output_body = self.model(data_body)
-                grad_output = torch.autograd.grad(output_body.sum(), data_body,
-                                                  retain_graph=True, create_graph=True)[0]
+                # 使用固定配点计算损失
+                loss = self._compute_loss(self.data_body, self.data_boundary)
 
-                source_term = self.model.pde.source_term(data_body).to(self.device)
-                energy_loss = compute_energy_loss_quadrature(output_body, grad_output, source_term, self.params["radius"])
+                # 检查收敛
+                if self._check_convergence(loss_window, loss.item(), step):
+                    break
 
-                target_boundary = self.model.pde.boundary_condition(data_boundary)
-                output_boundary = self.model(data_boundary)
-                boundary_loss = compute_boundary_loss_quadrature(output_boundary, target_boundary, self.params["penalty"], self.params["radius"])
+                # 记录损失
+                f.write(f"{step} {loss.item()}\n")
 
-                loss = compute_total_loss_quadrature(energy_loss, boundary_loss)
-
-                loss_window.append(loss.item())
-                if len(loss_window) > window_size and step > window_size:
-                    loss_diff = max(loss_window) - min(loss_window)
-                    if loss_diff < float(tolerance):
-                        print(f"Training stopped at step {step}: Loss converged (difference {loss_diff:.8f} < {tolerance})")
-                        break
-                    loss_window.pop(0)
-
+                # 定期评估和记录进度
                 if step % self.params["writeStep"] == 0:
+                    self.model.eval()
                     l2_error, h1_error = self.test()
+                    self.model.train()
                     steps.append(step)
                     l2_errors.append(l2_error)
-                    h1_errors.append(h1_error)
-                    print(f"Step {step}: Loss = {loss.item():.6f}, L2 Error = {l2_error:.6f}, H1 Error = {h1_error:.6f}")
-                    f.write(f"{step} {loss.item()}\n")
+                    h1_errors.append(h1_error.item())
+                    self._log_progress(step, loss.item(), l2_error, h1_error)
 
-                if step % self.params["sampleStep"] == 0:
-                    data_body = torch.from_numpy(Utils.sample_from_disk(self.params["radius"], self.params["bodyBatch"])).float().to(self.device)
-                    data_body.requires_grad = True
-                    data_boundary = torch.from_numpy(Utils.sample_from_surface(self.params["radius"], self.params["bdryBatch"])).float().to(self.device)
-
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-                self.scheduler.step()
-
-        with open(os.path.join(self.data_dir, "rkdr_mc_error_history.txt"), "w") as f:
-            f.write("Step L2_Error H1_Error\n")
-            for step_val, l2_err, h1_err in zip(steps, l2_errors, h1_errors):
-                f.write(f"{step_val} {l2_err} {h1_err}\n")
-        return steps, l2_errors, h1_errors
-
-
-    def train_coll(self) -> Tuple[List[int], List[float], List[float]]:
-        """
-        训练模型 - 使用固定的配点 (Collocation/Quadrature) 进行积分
-        """
-        self.model.train()
-        steps, l2_errors, h1_errors = [], [], []
-        loss_window = []
-        window_size = self.params.get("window_size", 100)
-        tolerance = self.params.get("tolerance", 1e-5)
-
-        # 使用不同的文件名保存配点法的历史记录
-        loss_history_path = os.path.join(self.data_dir, "rkdr_coll_loss_history.txt")
-        error_history_path = os.path.join(self.data_dir, "rkdr_coll_error_history.txt")
-
-        with open(loss_history_path, "w") as f:
-            f.write("Step Loss\n")
-            for step in range(self.params["trainStep"]):
-                # 使用在 __init__ 中定义的固定的 self.data_body 和 self.weights_body
-                output_body = self.model(self.data_body)
-
-                # 计算梯度。注意: .sum() 是一个好习惯，可以确保 grad_outputs 的形状正确
-                grad_output = torch.autograd.grad(output_body.sum(), self.data_body,
-                                                  retain_graph=True, create_graph=True)[0]
-
-                source_term = self.model.pde.source_term(self.data_body).to(self.device)
-
-                # 调用配点版本的能量损失函数
-                energy_loss = compute_energy_loss_quadrature(output_body, grad_output, source_term, self.weights_body)
-
-                # 边界损失处理不变 (仍然可以使用随机采样的边界点)
-                target_boundary = self.model.pde.boundary_condition(self.data_boundary)
-                output_boundary = self.model(self.data_boundary)
-                boundary_loss = compute_boundary_loss_quadrature(output_boundary, target_boundary, self.params["penalty"], self.params["radius"])
-
-                loss = compute_total_loss_quadrature(energy_loss, boundary_loss)
-
-                # --- 关键补充: 从原始 train 方法复制收敛判断和评估逻辑 ---
-                loss_window.append(loss.item())
-                if len(loss_window) > window_size and step > window_size:
-                    loss_diff = max(loss_window) - min(loss_window)
-                    if loss_diff < float(tolerance):
-                        print(f"Training stopped at step {step}: Loss converged (difference {loss_diff:.8f} < {tolerance})")
-                        break
-                    loss_window.pop(0)
-
-                if step % self.params["writeStep"] == 0:
-                    l2_error, h1_error = self.test() # 调用 test 方法进行评估
-                    steps.append(step)
-                    l2_errors.append(l2_error)
-                    h1_errors.append(h1_error) # .item() 已在 test 方法内部处理
-                    print(f"Step {step}: Loss = {loss.item():.6f}, L2 Error = {l2_error:.6f}, H1 Error = {h1_error:.6f}")
-                    f.write(f"{step} {loss.item()}\n")
-
-                # 如果希望边界点在训练中也更新，可以加入以下代码
+                # 周期性更新边界点
                 if step % self.params.get("sampleStep", 100) == 0:
                     self.data_boundary = torch.from_numpy(Utils.sample_from_surface(
                         self.params["radius"], self.params["bdryBatch"]
                     )).float().to(self.device)
-                # --- (逻辑补充结束) ---
 
-                # 优化器步骤
+                # 优化步骤
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
                 self.scheduler.step()
 
-        with open(error_history_path, "w") as f:
-            f.write("Step L2_Error H1_Error\n")
-            for step_val, l2_err, h1_err in zip(steps, l2_errors, h1_errors):
-                f.write(f"{step_val} {l2_err} {h1_err}\n")
+        # 保存训练历史
+        self._save_history(steps, l2_errors, h1_errors, loss_history_file, error_history_file)
 
         return steps, l2_errors, h1_errors
+

@@ -1,102 +1,120 @@
 """
-losses_pinn.py: 基于物理信息神经网络（PINN）/配点法的损失函数定义模块
+losses_pinn.py: 基于物理信息神经网络（PINN）的损失函数定义模块
 """
 
 import torch
 from typing import Tuple
+from .base_loss import BaseLoss, EnergyLossMixin, BoundaryLossMixin
+
+
+class PINNLoss(BaseLoss):
+    """PINN损失计算类，基于PDE残差"""
+
+    def compute_energy_loss(self, model: torch.nn.Module, data_body: torch.Tensor,
+                           source_func) -> torch.Tensor:
+        """
+        计算PDE残差损失
+
+        Args:
+            model: 神经网络模型
+            data_body: 内部采样点
+            source_func: 源项函数
+
+        Returns:
+            PDE残差损失
+        """
+        self.validate_inputs(data_body)
+
+        # 计算模型输出和二阶导数
+        output = model(data_body)
+
+        # 计算一阶导数
+        grad_u = torch.autograd.grad(
+            outputs=output,
+            inputs=data_body,
+            grad_outputs=torch.ones_like(output),
+            create_graph=True,
+            retain_graph=True
+        )[0]
+
+        # 计算二阶导数（Laplace算子）
+        grad_u_x = grad_u[:, 0:1]
+        grad_u_y = grad_u[:, 1:2]
+
+        grad_u_xx = torch.autograd.grad(
+            outputs=grad_u_x,
+            inputs=data_body,
+            grad_outputs=torch.ones_like(grad_u_x),
+            create_graph=True,
+            retain_graph=True
+        )[0][:, 0:1]
+
+        grad_u_yy = torch.autograd.grad(
+            outputs=grad_u_y,
+            inputs=data_body,
+            grad_outputs=torch.ones_like(grad_u_y),
+            create_graph=True,
+            retain_graph=True
+        )[0][:, 1:2]
+
+        # Laplace算子：∇²u
+        laplace_u = grad_u_xx + grad_u_yy
+
+        # 源项
+        source_term = source_func(data_body)
+
+        # PDE残差：∇²u - f
+        pde_residual = laplace_u + source_term
+
+        # 返回残差的均方误差
+        return torch.mean(pde_residual ** 2)
+
+    def compute_boundary_loss(self, output: torch.Tensor, target: torch.Tensor,
+                             **kwargs) -> torch.Tensor:
+        """
+        计算边界条件损失（L2范数）
+
+        Args:
+            output: 模型边界输出
+            target: 目标边界值
+            **kwargs: 其他参数
+
+        Returns:
+            边界损失
+        """
+        self.validate_inputs(output, target)
+        return self.compute_dirichlet_penalty(output, target, method='l2')
+
+    def compute_total_loss(self, pde_loss: torch.Tensor, boundary_loss: torch.Tensor,
+                        penalty: float) -> torch.Tensor:
+        """
+        计算PINN总损失（带权重）
+
+        Args:
+            pde_loss: PDE残差损失
+            boundary_loss: 边界损失
+            penalty: 边界条件权重
+
+        Returns:
+            加权总损失
+        """
+        return pde_loss + penalty * boundary_loss
+
+
+# 为了向后兼容，保留原有的函数接口
+_pinn_loss = PINNLoss()
 
 
 def compute_pde_loss(model: torch.nn.Module, data_body: torch.Tensor, source_func) -> torch.Tensor:
-    """
-    计算偏微分方程（PDE）残差损失。
-    对于泊松方程 -∇²u = f，残差定义为 R = ∇²u + f。
-    本函数计算残差的均方误差 E[R²]。
-
-    Args:
-        model (torch.nn.Module): 神经网络模型。
-        data_body (torch.Tensor): 区域内部的采样点（配点），需要设置 requires_grad=True。
-                                 形状为 [batch_size, 2]。
-        source_func (callable): 源项函数 f(data)，返回一个与 data_body 形状匹配的张量。
-
-    Returns:
-        torch.Tensor: PDE残差损失（一个标量）。
-    """
-    # 确保 data_body 可以进行梯度计算
-    if not data_body.requires_grad:
-        raise ValueError("`data_body` must have `requires_grad=True` for second-order derivatives.")
-
-    # 1. 前向传播，获取网络输出 u(x, y)
-    output_body = model(data_body)
-
-    # 2. 自动微分计算拉普拉斯算子 ∇²u
-    # 2.1 计算一阶导数 ∇u = (du/dx, du/dy)
-    # create_graph=True 是计算高阶导数的关键
-    grad_output = torch.autograd.grad(
-        outputs=output_body,
-        inputs=data_body,
-        grad_outputs=torch.ones_like(output_body),
-        create_graph=True
-    )[0]
-    du_dx = grad_output[:, 0:1]
-    du_dy = grad_output[:, 1:2]
-
-    # 2.2 计算二阶导数 d²u/dx² 和 d²u/dy²
-    d2u_dx2 = torch.autograd.grad(
-        outputs=du_dx,
-        inputs=data_body,
-        grad_outputs=torch.ones_like(du_dx),
-        create_graph=True
-    )[0][:, 0:1]
-
-    d2u_dy2 = torch.autograd.grad(
-        outputs=du_dy,
-        inputs=data_body,
-        grad_outputs=torch.ones_like(du_dy),
-        create_graph=True  # 对于某些复杂模型或损失函数，保留图可能有用
-    )[0][:, 1:2]
-
-    # 2.3 得到拉普拉斯算子
-    laplacian_u = d2u_dx2 + d2u_dy2
-
-    # 3. 计算源项 f(x, y)
-    source_term = source_func(data_body).to(data_body.device)
-
-    # 4. 计算 PDE 残差 R = ∇²u + f
-    pde_residual = laplacian_u + source_term
-
-    # 5. 计算残差的均方误差作为损失
-    loss_pde = torch.mean(pde_residual ** 2)
-
-    return loss_pde
+    """向后兼容函数"""
+    return _pinn_loss.compute_energy_loss(model, data_body, source_func)
 
 
 def compute_bc_loss(output: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    """
-    计算边界条件（Boundary Condition）损失。
-    采用网络输出与目标值的均方误差。
-
-    Args:
-        output (torch.Tensor): 模型在边界上的输出 [batch_size, 1]。
-        target (torch.Tensor): 边界上的目标值（真实解） [batch_size, 1]。
-
-    Returns:
-        torch.Tensor: 边界损失（一个标量）。
-    """
-    loss_bc = torch.mean((output - target) ** 2)
-    return loss_bc
+    """向后兼容函数"""
+    return _pinn_loss.compute_boundary_loss(output, target)
 
 
 def compute_total_pinn_loss(pde_loss: torch.Tensor, bc_loss: torch.Tensor, penalty: float) -> torch.Tensor:
-    """
-    计算加权的总损失，用于PINN方法。
-
-    Args:
-        pde_loss (torch.Tensor): PDE残差损失。
-        bc_loss (torch.Tensor): 边界条件损失。
-        penalty (float): 边界损失的权重（惩罚系数）。
-
-    Returns:
-        torch.Tensor: 加权后的总损失。
-    """
-    return pde_loss + penalty * bc_loss
-
+    """向后兼容函数"""
+    return _pinn_loss.compute_total_loss(pde_loss, bc_loss, penalty)

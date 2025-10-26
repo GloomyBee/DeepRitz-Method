@@ -63,8 +63,8 @@ def main():
     params["device"] = device
 
     # 确保训练步数足够（如果配置中的trainStep太小，使用默认值）
-    if params.get("trainStep", 0) < 1000:
-        params["trainStep"] = 20000
+    #if params.get("trainStep", 0) < 1000:
+    #    params["trainStep"] = 5000
 
     # 创建PDE实例
     pde = Poisson2D(radius=params["radius"])
