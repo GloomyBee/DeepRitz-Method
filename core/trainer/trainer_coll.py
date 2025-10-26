@@ -8,12 +8,11 @@ import math
 from typing import List, Tuple
 from ..data_utils.sampler import Utils
 # 确保导入了正确的损失函数
-from ..loss.losses import compute_energy_loss, compute_boundary_loss, compute_total_loss
-from ..loss.losses_coll import compute_energy_loss_quadrature
+from ..loss.losses_coll import compute_energy_loss_quadrature, compute_boundary_loss_quadrature, compute_total_loss_quadrature
 
 
-class Trainer:
-    """训练器类"""
+class CollocationTrainer:
+    """配点法训练器类"""
 
     def __init__(self, model, device: str, params: dict):
         self.model = model
@@ -24,13 +23,10 @@ class Trainer:
         self.data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output")
         os.makedirs(self.data_dir, exist_ok=True)
 
-        # ====================  关键修复: 初始化配点和权重 ====================
-        # 这个初始化块对 train_coll 方法至关重要。
+
         # 我们在这里预先生成固定的配点，供 train_coll 在整个训练过程中使用。
 
-        # 从参数中获取每个轴的点数。
-        # 'bodyQuadBatch' 应该是一个能开方的数，如 2500 (50*50), 10000 (100*100)
-        # 我们使用 .get() 来提供一个默认值，以防参数文件中没有定义。
+        # 从参数中获取每个轴的点数。'bodyQuadBatch' 应该是一个能开方的数，如 2500 (50*50), 10000 (100*100)，我们使用 .get() 来提供一个默认值，以防参数文件中没有定义。
         num_points_per_axis = int(math.sqrt(self.params.get("bodyQuadBatch", 2500)))
 
         # 1. 生成内部配点和权重
@@ -47,7 +43,7 @@ class Trainer:
         self.data_boundary = torch.from_numpy(Utils.sample_from_surface(
             self.params["radius"], self.params["bdryBatch"]
         )).float().to(self.device)
-        # ======================= (初始化修复结束) =======================
+
 
     def test(self) -> Tuple[float, float]:
         num_quad = self.params["numQuad"]
@@ -118,13 +114,13 @@ class Trainer:
                                                   retain_graph=True, create_graph=True)[0]
 
                 source_term = self.model.pde.source_term(data_body).to(self.device)
-                energy_loss = compute_energy_loss(output_body, grad_output, source_term, self.params["radius"])
+                energy_loss = compute_energy_loss_quadrature(output_body, grad_output, source_term, self.params["radius"])
 
                 target_boundary = self.model.pde.boundary_condition(data_boundary)
                 output_boundary = self.model(data_boundary)
-                boundary_loss = compute_boundary_loss(output_boundary, target_boundary, self.params["penalty"], self.params["radius"])
+                boundary_loss = compute_boundary_loss_quadrature(output_boundary, target_boundary, self.params["penalty"], self.params["radius"])
 
-                loss = compute_total_loss(energy_loss, boundary_loss)
+                loss = compute_total_loss_quadrature(energy_loss, boundary_loss)
 
                 loss_window.append(loss.item())
                 if len(loss_window) > window_size and step > window_size:
@@ -191,9 +187,9 @@ class Trainer:
                 # 边界损失处理不变 (仍然可以使用随机采样的边界点)
                 target_boundary = self.model.pde.boundary_condition(self.data_boundary)
                 output_boundary = self.model(self.data_boundary)
-                boundary_loss = compute_boundary_loss(output_boundary, target_boundary, self.params["penalty"], self.params["radius"])
+                boundary_loss = compute_boundary_loss_quadrature(output_boundary, target_boundary, self.params["penalty"], self.params["radius"])
 
-                loss = compute_total_loss(energy_loss, boundary_loss)
+                loss = compute_total_loss_quadrature(energy_loss, boundary_loss)
 
                 # --- 关键补充: 从原始 train 方法复制收敛判断和评估逻辑 ---
                 loss_window.append(loss.item())

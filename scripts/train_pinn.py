@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.pdes.poisson import Poisson2D
 from core.models.mlp import EnhancedRitzNet
-from core.trainer_pinn import PINNTrainer
+from core.trainer.trainer_pinn import PINNTrainer
 from core.utils import setup_matplotlib, save_model, save_training_info
 from config.config_loader import load_config
 

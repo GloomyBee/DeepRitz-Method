@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.pdes.poisson import Poisson2D
 from core.models.mlp import EnhancedRitzNet
-from core.trainer.trainer import Trainer
+from core.trainer.trainer_coll import CollocationTrainer
 from core.utils import setup_matplotlib, save_model, save_training_info
 from config.config_loader import load_config
 
@@ -87,23 +87,15 @@ def main():
     model.pde = pde  # 将PDE实例附加到模型
 
     # 创建训练器
-    trainer = Trainer(model, device, params)
+    trainer = CollocationTrainer(model, device, params)
 
-    # ====================  关键修改: 根据参数选择训练方法 ====================
-    if args.method == 'coll':
-        print("\nStarting RKDR training with Collocation method...")
-        training_method = trainer.train_coll
-        output_prefix = "rkdr_coll"
-    else:  # 默认使用 Monte Carlo
-        print("\nStarting RKDR training with Monte Carlo method...")
-        training_method = trainer.train
-        output_prefix = "rkdr_mc"
-
+    # 开始配点法训练
+    print("\nStarting RKDR training with Collocation method...")
     start_time = time.time()
-    steps, l2_errors, h1_errors = training_method()  # 调用选择的训练方法
+    steps, l2_errors, h1_errors = trainer.train_coll()  # 调用配点法训练
     train_time = time.time() - start_time
     print(f"Training finished in {train_time:.2f} seconds.")
-    # =================================================================
+    output_prefix = "rkdr_coll"
 
     # 测试
     model.eval()

@@ -1,14 +1,16 @@
 # DeepRitz Framework
 
-基于Deep Ritz方法的科学计算框架，用于求解偏微分方程。该项目提供了模块化的架构，支持RKDR（Radial Kernel Distribution Regression）方法。
+基于Deep Ritz方法的科学计算框架，用于求解偏微分方程。该项目提供了完整的模块化架构，支持多种求解方法包括RKDR（Radial Kernel Distribution Regression）和PINN方法。
 
 ## 项目概述
 
-该项目实现了一个求解偏微分方程的深度学习框架，特别针对泊松方程问题进行了优化。框架采用模块化设计，便于扩展和维护。
+该项目实现了一个多方法的深度学习框架，特别针对泊松方程问题进行了优化。框架采用模块化设计，支持不同的数值求解方法，便于研究比较和扩展。
 
 ### 主要特性
 
 - 🧠 **RKDR方法**: 基于径向核函数分布回归的改进Deep Ritz方法
+- 🧮 **PINN方法**: 基于物理信息的神经网络方法
+- 📐 **配点法**: 基于数值积分的高精度训练方法
 - 🏗️ **模块化架构**: 清晰的代码结构，便于维护和扩展
 - ⚙️ **配置管理**: 使用YAML文件管理实验参数
 - 📊 **可视化工具**: 完整的结果可视化和分析工具
@@ -32,13 +34,20 @@ DeepRitz/
 │   │   └── mlp.py          # 增强Ritz网络
 │   ├── data_utils/        # 数据处理工具
 │   │   └── sampler.py     # 采样和计算工具
-│   ├── losses.py          # deep ritz损失函数定义
-│   ├── losses_pinn.py     # pinn损失函数定义
-│   ├── trainer.py         # 训练逻辑
+│   ├── loss/               # 损失函数模块
+│   │   ├── losses.py       # DeepRitz损失函数（蒙特卡洛）
+│   │   ├── losses_pinn.py  # PINN损失函数
+│   │   └── losses_coll.py # 配点法损失函数
+│   ├── trainer/            # 训练器模块
+│   │   ├── trainer.py      # DeepRitz训练器
+│   │   ├── trainer_pinn.py # PINN训练器
+│   │   └── trainer_coll.py # 配点法训练器
 │   └── utils.py           # 通用工具
 │
 ├── scripts/              # 执行脚本
-│   ├── train.py          # 训练入口
+│   ├── train.py          # DeepRitz训练（蒙特卡洛）
+│   ├── train_pinn.py     # PINN训练
+│   ├── train_coll.py     # RKDR训练（配点法）
 │   ├── evaluate.py       # 模型评估
 │   └── visualize.py      # 结果可视化
 │
@@ -102,20 +111,39 @@ class EnhancedRitzNet(BaseModel):
 - `gaussian_kernel()`: 高斯核函数
 - `compute_error()`: 相对L2误差计算
 
-### 4. 损失函数 (`core/losses.py`)
+### 4. 损失函数 (`core/loss/`)
 
-- `compute_energy_loss()`: 能量泛函损失
+#### `losses.py` - DeepRitz损失函数（蒙特卡洛积分）
+- `compute_energy_loss()`: 能量泛函损失（蒙特卡洛）
 - `compute_boundary_loss()`: 边界条件损失
 - `compute_total_loss()`: 总损失计算
 
-### 5. 训练器 (`core/trainer.py`)
+#### `losses_pinn.py` - PINN损失函数
+- `compute_pde_loss()`: PDE残差损失
+- `compute_bc_loss()`: 边界条件损失
+- `compute_total_pinn_loss()`: 加权总损失
 
-核心训练逻辑，包含：
+#### `losses_coll.py` - 配点法损失函数（数值积分）
+- `compute_energy_loss_quadrature()`: 能量泛函损失（配点法）
+- `compute_boundary_loss_quadrature()`: 边界条件损失
+- `compute_total_loss_quadrature()`: 总损失计算
 
-- 模型训练循环
-- 收敛判断机制
-- 定期测试和评估
-- 训练历史记录
+### 5. 训练器 (`core/trainer/`)
+
+#### `trainer.py` - DeepRitz训练器
+- 标准DeepRitz方法训练逻辑
+- 蒙特卡洛积分实现
+- 收敛判断和评估机制
+
+#### `trainer_pinn.py` - PINN训练器
+- 物理信息神经网络训练
+- 基于PDE残差的损失优化
+- 自动微分计算二阶导数
+
+#### `trainer_coll.py` - 配点法训练器
+- RKDR方法专用训练器
+- 固定配点和数值积分
+- 高精度计算实现
 
 ### 6. 工具函数 (`core/utils.py`)
 
@@ -150,19 +178,32 @@ pip install torch numpy matplotlib pyyaml
 
 ### 基本使用
 
-#### 1. 训练RKDR模型
+#### 1. DeepRitz方法（蒙特卡洛积分）
 
 ```bash
 python scripts/train.py
 ```
 
-训练过程将：
+#### 2. RKDR方法（配点法）
+
+```bash
+python scripts/train_coll.py
+```
+
+#### 3. PINN方法（物理信息神经网络）
+
+```bash
+python scripts/train_pinn.py
+```
+
+所有训练脚本将：
 - 自动创建输出目录
 - 记录训练损失和误差历史
 - 保存训练好的模型
 - 生成训练时间统计
+- 支持GPU加速
 
-#### 2. 评估模型
+#### 4. 评估模型
 
 ```bash
 python scripts/evaluate.py
@@ -174,7 +215,7 @@ python scripts/evaluate.py
 - 显示模型参数数量
 - 输出评估结果
 
-#### 3. 可视化结果
+#### 5. 可视化结果
 
 ```bash
 python scripts/visualize.py
@@ -185,6 +226,14 @@ python scripts/visualize.py
 - 损失收敛曲线
 - 绝对误差分布
 - 误差收敛曲线
+
+### 训练方法对比
+
+| 方法 | 积分方式 | 训练器 | 损失函数 | 特点 |
+|------|----------|---------|----------|------|
+| DeepRitz | 蒙特卡洛 | Trainer | losses.py | 标准方法，随机采样 |
+| RKDR | 数值积分 | CollocationTrainer | losses_coll.py | 高精度，固定配点 |
+| PINN | 无（残差） | PINNTrainer | losses_pinn.py | 基于物理约束 |
 
 ## 配置系统
 
@@ -275,11 +324,24 @@ class FourierNeuralOperator(BaseModel):
 ## 输出文件说明
 
 ### 训练输出
-- `rkdr_last_model.pt`: 训练好的模型权重
-- `rkdr_loss_history.txt`: 训练损失历史
-- `rkdr_error_history.txt`: 误差历史
-- `rkdr_training_time.txt`: 训练时间统计
-- `rkdr_solution_data.txt`: 解数据（预测值vs解析解）
+
+#### DeepRitz方法（蒙特卡洛）
+- `rkdr_mc_last_model.pt`: 训练好的模型权重
+- `rkdr_mc_loss_history.txt`: 训练损失历史
+- `rkdr_mc_error_history.txt`: 误差历史
+- `rkdr_mc_training_info.txt`: 训练信息统计
+
+#### RKDR方法（配点法）
+- `rkdr_coll_last_model.pt`: 训练好的模型权重
+- `rkdr_coll_loss_history.txt`: 训练损失历史
+- `rkdr_coll_error_history.txt`: 误差历史
+- `rkdr_coll_training_info.txt`: 训练信息统计
+
+#### PINN方法
+- `pinn_last_model.pt`: 训练好的模型权重
+- `pinn_loss_history.txt`: 训练损失历史
+- `pinn_error_history.txt`: 误差历史
+- `pinn_training_time.txt`: 训练时间统计
 
 ### 可视化输出
 - `5-1-1-*.png`: 预测解图像
@@ -290,7 +352,10 @@ class FourierNeuralOperator(BaseModel):
 - `5-1-6-*.png`: 误差收敛曲线
 - `5-1-7-*.png`: 对数误差收敛曲线
 - `5-1-8-*.png`: 解析解图像
-- `5-1-9-*.png`: 梯度误差分布
+
+### 解数据文件
+- `*_solution_data.txt`: 解数据（预测值vs解析解）
+- `*_error_history.txt`: L2和H1误差历史记录
 
 ## 性能优化
 
@@ -317,12 +382,28 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 1. **CUDA内存不足**: 减小 `bodyBatch` 和 `bdryBatch`
 2. **训练不收敛**: 调整学习率或增加网络容量
 3. **梯度爆炸**: 检查损失函数和权重初始化
+4. **导入错误**: 确保使用正确的训练器类和导入路径
 
 ### 测试策略
 框架设计了测试目录结构，支持：
 - 单元测试：测试各个模块功能
 - 集成测试：测试完整训练流程
 - 回归测试：确保修改不破坏现有功能
+
+### 🔧 已知问题修复（2025-10-26）
+项目已修复以下主要逻辑问题：
+- **循环依赖问题**: 统一了导入路径，使用相对导入
+- **重复类定义问题**: 重命名训练器类，避免命名冲突
+- **损失函数混乱**: 分离了不同方法的损失函数，使用明确命名
+- **脚本导入错误**: 修复了错误的导入路径
+- **训练方法匹配**: 修复了训练方法调用逻辑
+- **可视化硬编码**: 从配置文件加载参数，而非硬编码
+
+### 🔧 架构优势
+- **模块化设计**: 清晰的职责分离，便于维护
+- **配置统一**: 所有组件使用相同的配置系统
+- **方法多样**: 支持多种求解方法，便于比较研究
+- **扩展性强**: 基于抽象基类，易于添加新功能
 
 ## 贡献指南
 
@@ -341,4 +422,6 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 ---
 
-**注意**: 原始的 `RKDR-2d.py` 和 `RD-2d.py` 文件保留在根目录中，确保向后兼容性。新框架提供了更好的模块化和扩展性，建议在新项目中使用。
+**注意**: 原始的 `RKDR-2d.py` 和 `RD-2d.py` 文件保留在根目录中，确保向后兼容性。新的模块化框架提供了更好的维护性、扩展性和多种求解方法支持，建议在新项目中使用。
+
+**最新更新**: 2025-10-26，项目已完成主要逻辑问题修复，架构更加稳定，支持多种训练方法和完整的可视化流程。

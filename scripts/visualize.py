@@ -15,6 +15,7 @@ from core.pdes.poisson import Poisson2D
 from core.models.mlp import EnhancedRitzNet
 from core.data_utils.sampler import Utils
 from core.utils import setup_matplotlib
+from config.config_loader import load_config
 
 
 class Visualizer:
@@ -184,27 +185,28 @@ class Visualizer:
 
 def load_model_for_visualization(model_path: str, device: str):
     """加载模型用于可视化"""
-    params = {
-        "d": 2,
-        "dd": 1,
-        "radius": 1.0,
-        "width": 100,
-        "depth": 3,
-        "device": device,
-        "k": 5,
-        "penalty": 1000,
-        "step_size": 200,
-        "nSample": 100
-    }
+    # 加载配置文件（与训练时一致）
+    config_dir = os.path.dirname(os.path.dirname(model_path))
+    config_path = os.path.join(config_dir, "..", "config", "base_config.yaml")
+    problem_config_path = os.path.join(config_dir, "..", "config", "poisson_2d.yaml")
     
-    NP = 21
-    nodes_x = torch.linspace(-1.0, 1.0, NP)
-    nodes_y = torch.linspace(-1.0, 1.0, NP)
+    config = load_config(config_path, problem_config_path)
+    params = config.to_dict()
+    params["device"] = device
+    
+    # 从配置中读取核函数参数
+    kernel_config = params.get("kernel", {})
+    nodes_count = kernel_config.get("nodes_count", 21)
+    scale = kernel_config.get("scale", 0.5)
+    
+    # 生成节点（与训练时一致）
+    nodes_x = torch.linspace(-params["radius"], params["radius"], nodes_count)
+    nodes_y = torch.linspace(-params["radius"], params["radius"], nodes_count)
     nodes = torch.stack(torch.meshgrid(nodes_x, nodes_y, indexing='xy'), dim=-1).reshape(-1, 2)
     distances = torch.sqrt(torch.sum(nodes ** 2, dim=1))
     inside_disk = distances <= params["radius"]
     nodes = nodes[inside_disk].to(device)
-    s = torch.tensor(0.5, dtype=torch.float32).to(device)
+    s = torch.tensor(scale, dtype=torch.float32).to(device)
     
     model = EnhancedRitzNet(params, nodes, s).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
