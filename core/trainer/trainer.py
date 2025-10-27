@@ -7,8 +7,7 @@ import os
 from typing import List, Tuple
 from .base_trainer import BaseTrainer
 from ..loss.losses import compute_energy_loss, compute_boundary_loss, compute_total_loss
-from ..data_utils.sampler import Utils
-
+from ..loss.losses import MonteCarloEnergyLoss
 
 class Trainer(BaseTrainer):
     """DeepRitz训练器类（蒙特卡洛积分方法）"""
@@ -23,11 +22,17 @@ class Trainer(BaseTrainer):
             params: 配置参数
         """
         super().__init__(model, device, params)
+
+        # 创建损失计算器
+
+        self.loss_calculator = MonteCarloEnergyLoss()
+
         # 准备训练数据
         self._prepare_training_data()
 
     def _prepare_training_data(self) -> None:
         """准备训练数据"""
+        from ..data_utils.sampler import Utils
         self.data_body = torch.from_numpy(
             Utils.sample_from_disk(self.params["radius"], self.params["bodyBatch"])
         ).float().to(self.device)
@@ -46,7 +51,7 @@ class Trainer(BaseTrainer):
             data_boundary: 边界点数据
 
         Returns:
-            总损失
+            总损失（标量）
         """
         # 计算内部点输出和梯度
         output_body = self.model(data_body)
@@ -58,15 +63,21 @@ class Trainer(BaseTrainer):
 
         # 能量损失
         source_term = self.model.pde.source_term(data_body).to(self.device)
-        energy_loss = compute_energy_loss(output_body, grad_output, source_term, self.params["radius"])
+        energy_loss = self.loss_calculator.compute_energy_loss(
+            output_body, grad_output, source_term, self.params["radius"]
+        )
 
         # 边界损失
-        target_boundary = self.model.pde.boundary_condition(data_boundary)
         output_boundary = self.model(data_boundary)
-        boundary_loss = compute_boundary_loss(output_boundary, target_boundary, self.params["penalty"], self.params["radius"])
+        target_boundary = self.model.pde.boundary_condition(data_boundary)
+        boundary_loss = self.loss_calculator.compute_boundary_loss(
+            output_boundary, target_boundary,
+            penalty=self.params["penalty"], radius=self.params["radius"]
+        )
 
         # 总损失
-        return compute_total_loss(energy_loss, boundary_loss)
+        total_loss = self.loss_calculator.compute_total_loss(energy_loss, boundary_loss)
+        return torch.mean(total_loss)
 
     def train(self) -> Tuple[List[int], List[float], List[float]]:
         """

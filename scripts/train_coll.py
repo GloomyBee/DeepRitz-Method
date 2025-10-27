@@ -92,7 +92,7 @@ def main():
     # 开始配点法训练
     print("\nStarting RKDR training with Collocation method...")
     start_time = time.time()
-    steps, l2_errors, h1_errors = trainer.train_coll()  # 调用配点法训练
+    steps, l2_errors, h1_errors = trainer.train()  # 调用配点法训练
     train_time = time.time() - start_time
     print(f"Training finished in {train_time:.2f} seconds.")
     output_prefix = "rkdr_coll"
@@ -113,8 +113,7 @@ def main():
     info_path = os.path.join(trainer.data_dir, f"{output_prefix}_training_info.txt")
 
     save_model(model, model_path)
-    save_training_info({"train_time": train_time, "test_time": test_time, "l2_error": l2_error, "h1_error": h1_error},
-                       info_path)
+    save_training_info(train_time, test_time, info_path)
 
     print(f"\nModel saved to {model_path}")
     print("Training completed successfully!")

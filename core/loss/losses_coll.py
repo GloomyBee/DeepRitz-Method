@@ -72,9 +72,12 @@ class QuadratureEnergyLoss(BaseLoss, EnergyLossMixin, BoundaryLossMixin):
             **kwargs: 其他参数
 
         Returns:
-            总损失
+            总损失（标量）
         """
-        return super().compute_total_loss(energy_loss, boundary_loss)
+        # 确保能量损失和边界损失都是标量
+        energy_scalar = torch.mean(energy_loss) if energy_loss.numel() > 1 else energy_loss
+        boundary_scalar = torch.mean(boundary_loss) if boundary_loss.numel() > 1 else boundary_loss
+        return super().compute_total_loss(energy_scalar, boundary_scalar)
 
 
 # 为了向后兼容，保留原有的函数接口

@@ -7,7 +7,7 @@ from typing import Tuple
 from .base_loss import BaseLoss, EnergyLossMixin, BoundaryLossMixin
 
 
-class PINNLoss(BaseLoss):
+class PINNLoss(BaseLoss, BoundaryLossMixin):
     """PINN损失计算类，基于PDE残差"""
 
     def compute_energy_loss(self, model: torch.nn.Module, data_body: torch.Tensor,
@@ -96,9 +96,10 @@ class PINNLoss(BaseLoss):
             penalty: 边界条件权重
 
         Returns:
-            加权总损失
+            加权总损失（标量）
         """
-        return pde_loss + penalty * boundary_loss
+        total_loss = pde_loss + penalty * boundary_loss
+        return torch.mean(total_loss)
 
 
 # 为了向后兼容，保留原有的函数接口
