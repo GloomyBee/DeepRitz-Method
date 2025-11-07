@@ -1,7 +1,6 @@
 """
 deep ritz核心训练逻辑 - DeepRitz方法（蒙特卡洛积分）
 """
-
 import torch
 import os
 from typing import List, Tuple
@@ -94,7 +93,8 @@ class Trainer(BaseTrainer):
         error_history_file = "rkdr_mc_error_history.txt"
         loss_path = os.path.join(self.data_dir, loss_history_file)
 
-        with open(loss_path, "w") as f:
+        # 使用flush确保文件及时写入磁盘
+        with open(loss_path, "w", buffering=1) as f:
             f.write("Step Loss\n")
             for step in range(self.params["trainStep"]):
                 # 使用当前数据计算损失

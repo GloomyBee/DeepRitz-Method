@@ -32,12 +32,12 @@ class MonteCarloEnergyLoss(BaseLoss, EnergyLossMixin, BoundaryLossMixin):
 
         # 源项：-f * u
         source_term_integral = self.compute_source_term_integral(
-            output, source_term, sign=-1.0
+            output, source_term, weights=None, sign=-1.0
         )
 
-        # 蒙特卡洛积分：乘以面积
+        # 修正：使用正确的蒙特卡洛积分
         area = math.pi * radius ** 2
-        return (energy_term + source_term_integral) / output.shape[0] * area
+        return torch.mean(energy_term) * area / output.shape[0] + torch.mean(source_term_integral) * area / output.shape[0]
 
     def compute_boundary_loss(self, output: torch.Tensor, target: torch.Tensor,
                              penalty: float, radius: float) -> torch.Tensor:

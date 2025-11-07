@@ -45,10 +45,7 @@ def main():
     
     # 更新设备参数
     params["device"] = device
-    
-    # 确保训练步数足够（如果配置中的trainStep太小，使用默认值）
-    #if params.get("trainStep", 0) < 1000:
-    #    params["trainStep"] = 20000
+
 
     # 创建PDE实例
     pde = Poisson2D(radius=params["radius"])
@@ -91,9 +88,9 @@ def main():
     print(f"The H1 error (of the last model) is {h1_error}.")
     print(f"The number of parameters is {sum(p.numel() for p in model.parameters())}.")
 
-    # 保存模型和训练信息
-    save_model(model, os.path.join(trainer.data_dir, "rkdr_last_model.pt"))
-    save_training_info(train_time, test_time, os.path.join(trainer.data_dir, "rkdr_training_time.txt"))
+    # 保存模型和训练信息（使用正确的文件名前缀）
+    save_model(model, os.path.join(trainer.data_dir, "rkdr_mc_last_model.pt"))
+    save_training_info(train_time, test_time, os.path.join(trainer.data_dir, "rkdr_mc_training_time.txt"))
 
     print("Training completed successfully!")
 

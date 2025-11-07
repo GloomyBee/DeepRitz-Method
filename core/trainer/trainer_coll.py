@@ -1,7 +1,6 @@
 """
 trainer_coll.py: 配点法训练器 - 专用于数值积分方法
 """
-
 import torch
 import os
 import math
@@ -9,7 +8,6 @@ from typing import List, Tuple
 from .base_trainer import BaseTrainer
 from ..loss.losses_coll import compute_energy_loss_quadrature, compute_boundary_loss_quadrature, compute_total_loss_quadrature
 from ..data_utils.sampler import Utils
-
 
 class CollocationTrainer(BaseTrainer):
     """配点法训练器类"""

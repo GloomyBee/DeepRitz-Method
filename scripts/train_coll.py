@@ -20,17 +20,6 @@ from config.config_loader import load_config
 
 def main():
     """主函数 - RKDR训练"""
-    # ====================  新增: 设置命令行参数解析 ====================
-    parser = argparse.ArgumentParser(description="Deep Ritz Method Training Script")
-    parser.add_argument(
-        '--method',
-        type=str,
-        default='mc',
-        choices=['mc', 'coll'],
-        help="Integration method: 'mc' for Monte Carlo (default), 'coll' for Collocation/Quadrature."
-    )
-    args = parser.parse_args()
-    # =================================================================
 
     setup_matplotlib()
 
@@ -61,10 +50,6 @@ def main():
 
     # 更新设备参数
     params["device"] = device
-
-    # 确保训练步数足够（如果配置中的trainStep太小，使用默认值）
-    #if params.get("trainStep", 0) < 1000:
-    #    params["trainStep"] = 5000
 
     # 创建PDE实例
     pde = Poisson2D(radius=params["radius"])

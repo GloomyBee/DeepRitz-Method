@@ -7,8 +7,9 @@ import torch
 from typing import List, Tuple
 from .base_trainer import BaseTrainer
 from ..loss.losses_pinn import compute_pde_loss, compute_bc_loss, compute_total_pinn_loss
-from ..data_utils.sampler import Utils
 
+from ..loss.losses_pinn import PINNLoss
+from ..data_utils.sampler import Utils
 
 class PINNTrainer(BaseTrainer):
     """PINN训练器类，用于优化基于PDE残差的神经网络"""
@@ -25,7 +26,7 @@ class PINNTrainer(BaseTrainer):
         super().__init__(model, device, params)
 
         # 创建损失计算器
-        from ..loss.losses_pinn import PINNLoss
+
         self.loss_calculator = PINNLoss()
 
         # 准备训练数据
@@ -33,7 +34,7 @@ class PINNTrainer(BaseTrainer):
 
     def _prepare_training_data(self) -> None:
         """准备PINN训练数据"""
-        from ..data_utils.sampler import Utils
+
         self.data_body = torch.from_numpy(
             Utils.sample_from_disk(self.params["radius"], self.params["bodyBatch"])
         ).float().to(self.device)
