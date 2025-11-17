@@ -17,11 +17,11 @@ width: 100             # 网络宽度
 depth: 3               # 网络深度
 
 # 训练参数
-trainStep: 200       # 训练步数
+trainStep: 20000       # 训练步数
 lr: 0.001             # 学习率
 preLr: 0.01           # 预训练学习率
 decay: 0.0001         # 权重衰减
-penalty: 10000         # 边界惩罚系数
+penalty: 1000         # 边界惩罚系数
 step_size: 200        # 学习率调度步数
 gamma: 0.5            # 学习率衰减因子
 
@@ -33,7 +33,7 @@ diff: 0.01            # 差分参数
 nSample: 100          # 可视化采样数
 
 # 设备参数
-device: "cpu"        # 设备选择 (auto, cpu, cuda)
+device: "cuda"        # 设备选择 (auto, cpu, cuda)
 
 # 输出参数
 output_dir: "output"  # 输出目录

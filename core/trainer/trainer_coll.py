@@ -51,43 +51,41 @@ class CollocationTrainer(BaseTrainer):
         ).float().to(self.device)
 
     def _compute_loss(self, data_body, data_boundary, weights_body=None) -> torch.Tensor:
-        """
-        计算配点法损失
-
-        Args:
-            data_body: 内部配点数据
-            data_boundary: 边界点数据
-            weights_body: 积分权重（可选）
-
-        Returns:
-            总损失
-        """
-        # 使用提供的权重或默认权重
         if weights_body is None:
             weights_body = self.weights_body
 
-        # 计算模型输出和梯度
-        output_body = self.model(data_body)
+        # ---------- 1. 内部能量 ----------
+        output_body = self.model(data_body)  # [N,1]
         grad_output = torch.autograd.grad(
             output_body, data_body,
             grad_outputs=torch.ones_like(output_body),
             create_graph=True, retain_graph=True, only_inputs=True
-        )[0]
+        )[0]  # [N,2]
 
-        return self.loss_calculator.compute_total_loss(
-            energy_loss=self.loss_calculator.compute_energy_loss(
-                data_body,
-                grad_output=grad_output,
-                source_term=self.model.pde.source_term(data_body),
-                weights=weights_body
-            ),
-            boundary_loss=self.loss_calculator.compute_boundary_loss(
-                target_boundary=self.model.pde.boundary_condition(data_boundary),
-                output_boundary=self.model(data_boundary),
-                penalty=self.params["penalty"],
-                radius=self.params["radius"]
-            )
+        energy_loss = self.loss_calculator.compute_energy_loss(
+            output_body,  # ← 修正：原来错误地传了 data_body
+            grad_output=grad_output,
+            source_term=self.model.pde.source_term(data_body),
+            weights=weights_body
+        )  # → 标量
+
+        # ---------- 2. 边界 ----------
+        output_boundary = self.model(data_boundary)
+        target_boundary = self.model.pde.boundary_condition(data_boundary)
+
+        boundary_loss = self.loss_calculator.compute_boundary_loss(
+            output_boundary=output_boundary,
+            target_boundary=target_boundary,
+            penalty=self.params["penalty"],
+            radius=self.params["radius"]
+        )  # → 标量
+
+        # ---------- 3. 总损失 ----------
+        total_loss = self.loss_calculator.compute_total_loss(
+            energy_loss=energy_loss,
+            boundary_loss=boundary_loss
         )
+        return total_loss
 
     def train(self) -> Tuple[List[int], List[float], List[float]]:
         """

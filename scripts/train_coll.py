@@ -6,6 +6,7 @@ import torch
 import time
 import sys
 import os
+import math
 import argparse  # 导入 argparse 模块用于处理命令行参数
 
 # 添加项目根目录到Python路径
@@ -100,6 +101,31 @@ def main():
     save_model(model, model_path)
     save_training_info(train_time, test_time, info_path)
 
+    # 保存solution_data
+    n_sample = params.get("nSample", 100)
+    r_list = torch.linspace(0, params["radius"], n_sample)
+    theta_list = torch.linspace(0, 2 * math.pi, n_sample)
+    xx, yy = torch.meshgrid(r_list, theta_list, indexing='xy')
+    x = xx * torch.cos(yy)
+    y = xx * torch.sin(yy)
+    coords = torch.stack([x.flatten(), y.flatten()], dim=-1)
+    coords_tensor = coords.to(device)
+
+    with torch.no_grad():
+        pred = model(coords_tensor).cpu().numpy()
+        exact = pde.exact_solution(coords_tensor).cpu().numpy()
+        x_np = x.cpu().numpy()
+        y_np = y.cpu().numpy()
+
+    solution_file = os.path.join(trainer.data_dir, f"{output_prefix}_solution_data.txt")
+    with open(solution_file, "w") as f:
+        f.write("x y Predicted Exact\n")
+        for i in range(n_sample):
+            for j in range(n_sample):
+                idx = i * n_sample + j
+                f.write(f"{x_np[i,j]} {y_np[i,j]} {pred[idx,0]} {exact[idx,0]}\n")
+
+    print(f"Solution data saved to {solution_file}")
     print(f"\nModel saved to {model_path}")
     print("Training completed successfully!")
 

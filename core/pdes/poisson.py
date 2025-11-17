@@ -23,7 +23,7 @@ class Poisson2D(BasePDE):
         Returns:
             源项张量 [batch_size, 1]
         """
-        return 4.0 * torch.ones([data.shape[0], 1], dtype=torch.float)
+        return 4.0 * torch.ones([data.shape[0], 1], dtype=torch.float,device=data.device)
     
     def exact_solution(self, data: torch.Tensor) -> torch.Tensor:
         """

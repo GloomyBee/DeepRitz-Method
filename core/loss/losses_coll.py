@@ -14,70 +14,67 @@ class QuadratureEnergyLoss(BaseLoss, EnergyLossMixin, BoundaryLossMixin):
     def compute_energy_loss(self, output_body: torch.Tensor, grad_output: torch.Tensor,
                            source_term: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
         """
-        通过数值积分（配点法）计算能量损失
+        通过加权求和（配点法）计算能量损失 → **标量**
 
         Args:
-            output_body: 模型输出
-            grad_output: 梯度
-            source_term: 源项
-            weights: 积分权重
+            output_body: 模型在内部点的输出 [N,1]
+            grad_output: 梯度 [N,2]
+            source_term: 源项 f [N,1]
+            weights: 积分权重 [N,1]  (∑w_i ≈ area)
 
         Returns:
-            能量损失
+            能量积分标量
         """
         self.validate_inputs(output_body, grad_output, source_term, weights)
 
-        # 能量项：0.5 * |grad(u)|^2
-        energy_term = self.compute_energy_from_gradient(grad_output)
+        # 1. 能量项：0.5 |∇u|² → [N,1] （Mixin 正确返回 per-point）
+        energy_per_point = self.compute_energy_from_gradient(grad_output)  # [N,1]
 
-        # 源项：-f * u
-        source_term_integral = self.compute_source_term_integral(
+        # 2. 加权求和 → 标量
+        weighted_energy = torch.sum(energy_per_point * weights)  # 关键！
+
+        # 3. 源项积分：调用 mixin，但强制汇总成标量（假设 mixin 返回 per-point）
+        source_integral = self.compute_source_term_integral(
             output_body, source_term, weights=weights, sign=-1.0
-        )
+        )  # 可能 [N,1] 或标量
 
-        # 数值积分：加权求和
-        return energy_term + source_term_integral
+        # 强制汇总（如果不是标量）
+        source_integral = torch.sum(source_integral)  # 这确保总是标量
+
+        # 4. 返回总能量损失标量
+        total_energy = weighted_energy + source_integral
+        return total_energy.squeeze()  # 额外防御：挤压任何剩余维度，确保标量
 
     def compute_boundary_loss(self, output_boundary: torch.Tensor, target_boundary: torch.Tensor,
-                             penalty: float, radius: float) -> torch.Tensor:
+                              penalty: float, radius: float) -> torch.Tensor:
         """
-        计算边界条件损失（配点法）
-
-        Args:
-            output_boundary: 模型边界输出
-            target_boundary: 目标边界值
-            penalty: 惩罚系数
-            radius: 域半径
+        边界 Dirichlet 惩罚（随机采样点 → 均匀平均）
 
         Returns:
-            边界损失
+            标量边界损失
         """
         self.validate_inputs(output_boundary, target_boundary)
 
-        # Dirichlet边界条件惩罚
-        boundary_penalty = self.compute_dirichlet_penalty(output_boundary, target_boundary, method='l2')
+        # L2 惩罚（均方误差）
+        boundary_penalty = self.compute_dirichlet_penalty(
+            output_boundary, target_boundary, method='l2'
+        )  # 假设返回 mean((u-g)²) → 标量
 
-        # 边界积分：乘以边界长度
+        # 如果 mixin 返回 per-point，强制 mean 或 sum（取决于语义；这里用 mean，因为是平均误差）
+        if boundary_penalty.dim() > 0:
+            boundary_penalty = torch.mean(boundary_penalty)  # 或 sum，如果是积分形式
+
+        # 边界长度 * 平均误差
         boundary_length = 2 * math.pi * radius
-        return boundary_penalty * penalty * boundary_length / output_boundary.shape[0]
+        return boundary_penalty * penalty * boundary_length  # 标量
 
-    def compute_total_loss(self, energy_loss: torch.Tensor, boundary_loss: torch.Tensor,
-                        **kwargs) -> torch.Tensor:
+    def compute_total_loss(self, energy_loss: torch.Tensor,
+                           boundary_loss: torch.Tensor, **kwargs) -> torch.Tensor:
         """
-        计算总损失
-
-        Args:
-            energy_loss: 能量损失
-            boundary_loss: 边界损失
-            **kwargs: 其他参数
-
-        Returns:
-            总损失（标量）
+        两个标量相加 → 总损失标量
         """
-        # 确保能量损失和边界损失都是标量
-        energy_scalar = torch.mean(energy_loss) if energy_loss.numel() > 1 else energy_loss
-        boundary_scalar = torch.mean(boundary_loss) if boundary_loss.numel() > 1 else boundary_loss
-        return super().compute_total_loss(energy_scalar, boundary_scalar)
+        # 此时 energy_loss、boundary_loss 已经是标量
+        return super().compute_total_loss(energy_loss, boundary_loss)
 
 
 # 为了向后兼容，保留原有的函数接口
