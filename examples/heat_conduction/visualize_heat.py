@@ -207,12 +207,122 @@ def plot_results(model, pde, loss_history, save_dir: str):
 
     plt.tight_layout()
 
-    # 保存图片
+    # 保存综合图
     save_path = os.path.join(save_dir, 'heat_results.png')
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"结果图已保存到: {save_path}")
+    print(f"综合结果图已保存到: {save_path}")
 
     plt.show()
+
+    # 单独保存每个子图
+    print("\n单独保存各子图...")
+
+    # 1. 温度分布云图
+    fig1 = plt.figure(figsize=(8, 6))
+    contour = plt.contourf(X, Y, T_pred, levels=100, cmap='inferno')
+    plt.colorbar(contour, label='Temperature (°C)')
+    plt.plot(vertices[:, 0], vertices[:, 1], 'k-', linewidth=2)
+    plt.annotate('T=20°C\n(Dirichlet)', xy=(0, 0.5), xytext=(-0.4, 0.5),
+                 arrowprops=dict(arrowstyle="->", color='blue'),
+                 fontsize=9, ha='center', color='blue',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    plt.annotate('q=-100 W/m²\n(Neumann)', xy=(0.5, 1.0), xytext=(0.5, 1.2),
+                 arrowprops=dict(arrowstyle="->", color='red'),
+                 fontsize=9, ha='center', color='red',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    plt.title("Temperature Distribution", fontsize=14, fontweight='bold')
+    plt.xlabel("x (m)", fontsize=12)
+    plt.ylabel("y (m)", fontsize=12)
+    plt.gca().set_aspect('equal')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'heat_temperature_distribution.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print("  - heat_temperature_distribution.png")
+
+    # 2. 损失曲线
+    fig2 = plt.figure(figsize=(8, 6))
+    if loss_history:
+        plt.plot(loss_history, linewidth=1.5, color='blue')
+        plt.yscale('log')
+        final_loss = loss_history[-1]
+        plt.text(0.95, 0.95, f'Final Loss: {final_loss:.4f}',
+                 transform=plt.gca().transAxes, fontsize=10,
+                 verticalalignment='top', horizontalalignment='right',
+                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
+    else:
+        plt.text(0.5, 0.5, 'Loss history not available',
+                 transform=plt.gca().transAxes, fontsize=12,
+                 ha='center', va='center')
+    plt.xlabel('Training Steps', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.title('Training Loss Curve', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'heat_loss_curve.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print("  - heat_loss_curve.png")
+
+    # 3. 温度等值线
+    fig3 = plt.figure(figsize=(8, 6))
+    contour_lines = plt.contour(X, Y, T_pred, levels=15, colors='black', linewidths=0.5)
+    plt.clabel(contour_lines, inline=True, fontsize=8, fmt='%.1f°C')
+    contourf = plt.contourf(X, Y, T_pred, levels=100, cmap='coolwarm', alpha=0.6)
+    plt.colorbar(contourf, label='Temperature (°C)')
+    plt.plot(vertices[:, 0], vertices[:, 1], 'k-', linewidth=2)
+    plt.title("Temperature Contours", fontsize=14, fontweight='bold')
+    plt.xlabel("x (m)", fontsize=12)
+    plt.ylabel("y (m)", fontsize=12)
+    plt.gca().set_aspect('equal')
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'heat_temperature_contours.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print("  - heat_temperature_contours.png")
+
+    # 4. 温度统计直方图
+    fig4 = plt.figure(figsize=(8, 6))
+    plt.hist(valid_temps, bins=50, edgecolor='black', alpha=0.7, color='orange')
+    plt.xlabel('Temperature (°C)', fontsize=12)
+    plt.ylabel('Frequency', fontsize=12)
+    plt.title('Temperature Distribution', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3, axis='y')
+    stats_text = f'Min: {valid_temps.min():.2f}°C\n'
+    stats_text += f'Max: {valid_temps.max():.2f}°C\n'
+    stats_text += f'Mean: {valid_temps.mean():.2f}°C\n'
+    stats_text += f'Std: {valid_temps.std():.2f}°C'
+    plt.text(0.95, 0.95, stats_text,
+             transform=plt.gca().transAxes, fontsize=10,
+             verticalalignment='top', horizontalalignment='right',
+             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'heat_temperature_histogram.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print("  - heat_temperature_histogram.png")
+
+    # 5. 沿x轴温度剖面
+    fig5 = plt.figure(figsize=(8, 6))
+    plt.plot(x_profile, T_x, 'b-', linewidth=2, label='y=0.5')
+    plt.xlabel('x (m)', fontsize=12)
+    plt.ylabel('Temperature (°C)', fontsize=12)
+    plt.title('Temperature Profile (x-axis)', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=10)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'heat_profile_x.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print("  - heat_profile_x.png")
+
+    # 6. 沿y轴温度剖面
+    fig6 = plt.figure(figsize=(8, 6))
+    plt.plot(y_profile2, T_y, 'r-', linewidth=2, label='x=0.5')
+    plt.xlabel('y (m)', fontsize=12)
+    plt.ylabel('Temperature (°C)', fontsize=12)
+    plt.title('Temperature Profile (y-axis)', fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=10)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'heat_profile_y.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    print("  - heat_profile_y.png")
 
 
 def main():
