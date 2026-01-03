@@ -1,0 +1,55 @@
+# 热传导问题配置文件 - 遵循框架标准
+
+# 基础参数
+window_size: 200
+tolerance: 5e-2
+k: 1
+d: 2                    # 输入维度
+dd: 3                   # 输出维度
+
+# 几何参数（梯形区域）
+trapezoid:
+  area: 1.5            # 梯形面积
+  len_left: 1.0        # 左边界长度
+  len_top: 1.0         # 上边界长度
+
+# 物理参数
+physics:
+  k_thermal: 20.0      # 导热系数 W/(m·K)
+  s_source: 50.0       # 体积热源 W/m³
+  T_left: 20.0         # 左边界温度 °C
+  q_top: -100.0        # 上边界热流密度 W/m²
+
+# 批处理参数
+bodyBatch: 5000        # 域内批大小
+bdryBatch: 1000        # 边界批大小
+numQuad: 10000         # 测试点数量
+
+# 网络参数
+width: 50              # 网络宽度
+depth: 4               # 网络深度
+
+# 核函数参数
+kernel:
+  nodes_count: 10      # 每个维度的节点数
+  scale: 0.5           # 核函数尺度参数
+
+# 训练参数
+trainStep: 5000        # 训练步数
+lr: 0.001              # 学习率
+decay: 0.0001          # 权重衰减
+penalty: 0           # 边界惩罚系数
+step_size: 500         # 学习率调度步数
+gamma: 0.5             # 学习率衰减因子
+
+# 采样参数
+writeStep: 100         # 评估和输出步数（每100步）
+sampleStep: 200        # 重新采样步数
+nSample: 100           # 可视化采样数
+
+# 设备参数
+device: "auto"         # 设备选择 (auto, cpu, cuda)
+
+# 输出参数
+output_dir: "output"
+figures_dir: "figures"

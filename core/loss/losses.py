@@ -37,7 +37,7 @@ class MonteCarloEnergyLoss(BaseLoss, EnergyLossMixin, BoundaryLossMixin):
 
         # 修正：使用正确的蒙特卡洛积分
         area = math.pi * radius ** 2
-        #return torch.mean(energy_term) * area / output.shape[0] + torch.mean(source_term_integral) * area / output.shape[0]
+
 
         return torch.mean(energy_term) * area + torch.mean(source_term_integral) * area
 

@@ -38,3 +38,10 @@ device: "cuda"        # 设备选择 (auto, cpu, cuda)
 # 输出参数
 output_dir: "output"  # 输出目录
 figures_dir: "figures" # 图表目录
+
+# 后端配置
+backend:
+  type: "python"           # 后端类型: "python" 或 "matlab"
+  matlab_path: null        # MATLAB安装路径(可选,null表示使用系统默认)
+  matlab_startup_timeout: 30  # MATLAB引擎启动超时(秒)
+  fallback_to_python: true # MATLAB失败时是否回退到Python
