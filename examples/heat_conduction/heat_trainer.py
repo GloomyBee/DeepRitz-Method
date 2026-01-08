@@ -34,34 +34,35 @@ class HeatTrainer(BaseTrainer):
         self._prepare_training_data()
 
     def _prepare_training_data(self) -> None:
-        """准备训练数据（固定内部点，动态边界点）"""
-        # 内部点（固定）
-        data_body_np = TrapezoidSampler.sample_domain(self.params["bodyBatch"])
-        self.data_body = torch.from_numpy(data_body_np).float().to(self.device)
-        self.data_body.requires_grad = True
-
-        # 左边界点（Dirichlet BC）
-        data_left_np = TrapezoidSampler.sample_left_boundary(self.params["bdryBatch"])
-        self.data_left = torch.from_numpy(data_left_np).float().to(self.device)
-
-        # 上边界点（Neumann BC）
-        data_top_np = TrapezoidSampler.sample_top_boundary(self.params["bdryBatch"])
-        self.data_top = torch.from_numpy(data_top_np).float().to(self.device)
+        """准备训练数据（每步动态采样，与根目录heat.py一致）"""
+        # 注意：不在这里采样，而是在每个训练步中动态采样
+        pass
 
     def _compute_loss(self) -> torch.Tensor:
         """
-        计算总损失
+        计算总损失（每步动态采样）
 
         Returns:
             总损失张量
         """
+        # 动态采样所有点（与根目录heat.py一致）
+        data_body_np = TrapezoidSampler.sample_domain(self.params["bodyBatch"])
+        data_body = torch.from_numpy(data_body_np).float().to(self.device)
+        data_body.requires_grad = True
+
+        data_left_np = TrapezoidSampler.sample_left_boundary(self.params["bdryBatch"])
+        data_left = torch.from_numpy(data_left_np).float().to(self.device)
+
+        data_top_np = TrapezoidSampler.sample_top_boundary(self.params["bdryBatch"])
+        data_top = torch.from_numpy(data_top_np).float().to(self.device)
+
         # 1. 计算能量损失（内部积分）
-        output_body = self.model(self.data_body)
+        output_body = self.model(data_body)
 
         # 计算梯度
         grad_output = torch.autograd.grad(
             outputs=output_body,
-            inputs=self.data_body,
+            inputs=data_body,
             grad_outputs=torch.ones_like(output_body),
             create_graph=True,
             retain_graph=True,
@@ -82,14 +83,14 @@ class HeatTrainer(BaseTrainer):
         energy_loss = torch.mean(energy_term + source_term) * area
 
         # 2. Dirichlet边界损失（左边界）
-        output_left = self.model(self.data_left)
+        output_left = self.model(data_left)
         T_left = self.params["physics"]["T_left"]
         bc_left_error = (output_left - T_left) ** 2
         len_left = self.params["trapezoid"]["len_left"]
         bc_left_loss = self.params["penalty"] * torch.mean(bc_left_error) * len_left
 
         # 3. Neumann边界损失（上边界）
-        output_top = self.model(self.data_top)
+        output_top = self.model(data_top)
         q_top = self.params["physics"]["q_top"]
         len_top = self.params["trapezoid"]["len_top"]
         bc_top_loss = q_top * torch.mean(output_top) * len_top
@@ -141,14 +142,6 @@ class HeatTrainer(BaseTrainer):
                     steps.append(step)
                     l2_errors.append(0.0)  # 占位
                     h1_errors.append(0.0)  # 占位
-
-                # 周期性重新采样边界点
-                if step % self.params.get("sampleStep", 200) == 0 and step > 0:
-                    data_left_np = TrapezoidSampler.sample_left_boundary(self.params["bdryBatch"])
-                    self.data_left = torch.from_numpy(data_left_np).float().to(self.device)
-
-                    data_top_np = TrapezoidSampler.sample_top_boundary(self.params["bdryBatch"])
-                    self.data_top = torch.from_numpy(data_top_np).float().to(self.device)
 
                 # 优化步骤
                 self.optimizer.zero_grad()
